@@ -42,6 +42,8 @@ typedef struct{
 
   char modo;
   unsigned short offset;
+  int carry;
+  int blockNumber;
 
 }arquivo;
 
@@ -320,11 +322,43 @@ int fs_close(int file)  {
 }
 
 int fs_write(char *buffer, int size, int file) {
-  printf("Função não implementada: fs_write\n");
-  return -1;
+ int contadorCluser = 0;
+
+ //*Verificando se o arquivo existe*//
+ if(arq[file]).first_block == 0){
+   printf("Arquivo inexistente");
+   return -1;
+ }
+
+ //*Verificação se arquivo é de escrita*//
+ if(arq[file].modo != FS_W){
+   printf("O arquivo não é um arquivo de escrita");
+   return -1;
+ }
+
+contadorCluster = arq[file].contadorEscrita;
+diretorio = arq[file].first_block;
+
 }
 
 int fs_read(char *buffer, int size, int file) {
+  int posicao;
+
+//*Verifica Existência do arquivo*//
+if(arq[file].first_block = 0){
+  printf("Arquivo Inexistente");
+  return -1;
+
+//*Verifica Se é arquivo de leitura*//
+if(arq[file].modo != FS_R){
+  printf("O arquivo não é um arquivo de leitura");
+}
+
+posicao = arq[file.first_block];
+
+}
+
+
   printf("Função não implementada: fs_read\n");
   return -1;
 }
