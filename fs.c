@@ -38,10 +38,11 @@ typedef struct {
     int size;
 } dir_entry;
 
+
 typedef struct{
 
   char modo;
-  unsigned short offset;
+  unsigned short first_block;
   int carry;
   int blockNumber;
 
@@ -280,19 +281,18 @@ int fs_remove(char *file_name) {
 /*Ate aqui */
 
 int fs_open(char *file_name, int mode) {
-
   int i =0;
   /*Leitura */
   if(mode == FS_R){
     for(i =0; i < 128;i++){
-      /*arquivo existe*/
       if(strcmp(dir[i].name,file_name) == 0 && dir[i].used){
+        
         arq[i].modo = FS_R;
-        arq[i].lastPos = 0;
+        arq[i].first_block = dir[i].first_block;
+
         return i;   
       }
     }
-    
     if(i == 128){
       printf("Arquivo não existe\n");
       return -1;
@@ -300,19 +300,36 @@ int fs_open(char *file_name, int mode) {
   }
   /*Escrita */
   else if(mode == FS_W){
-    for(i =0; i < 128;i++){
-      if(strcmp(dir[i].name,file_name) == 0 && dir[i].used){
-        fs_remove(*file_name);
+    for(i = 0; i < 128;i++){
+      if(strcmp(dir[i].name,file_name) == 0){
+        if(!fs_remove(*file_name)){ 
+          return -1;
+        }
+        if(!fs_create(file_name)){
+          return -1;
+        }
+
+        fs_remove(file_name);
+        fs_create(file_name);
+
         arq[i].modo = FS_W;
-        arq[i].lastPos = 0;
+        arq[i].first_block = dir[i].first_block;
         return i;
       }
     }
     if(i == 128){
-      fs_create(*file_name);
-    }  
+      fs_create(file_name);
+    }
+    for(i =0 ; i < 128; i++){
+      if(dir[i].used == 0){
+        fs_create(file_name);
+        arq[i].modo = FS_W;
+        arq[i].first_block = dir[i].first_block;
+        return i;
+      }
+    } 
   }
- 
+  
   return -1;
 }
 
