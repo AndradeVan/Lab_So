@@ -281,10 +281,10 @@ int fs_remove(char *file_name) {
 /*Ate aqui */
 
 int fs_open(char *file_name, int mode) {
-  int i =0;
+  int i = 0, flag_open = 0;
   /*Leitura */
   if(mode == FS_R){
-    for(i =0; i < 128;i++){
+    for(i = 0; i < 128; i++){
       if(strcmp(dir[i].name,file_name) == 0 && dir[i].used){
         
         arq[i].modo = FS_R;
@@ -293,34 +293,37 @@ int fs_open(char *file_name, int mode) {
         return i;   
       }
     }
-    if(i == 128){
+    if(i == 128) {
       printf("Arquivo não existe\n");
       return -1;
     }
   }
   /*Escrita */
   else if(mode == FS_W){
+
     for(i = 0; i < 128;i++){
       if(strcmp(dir[i].name,file_name) == 0){
-        if(!fs_remove(*file_name)){ 
+        if(!fs_remove(file_name)){ 
           return -1;
         }
         if(!fs_create(file_name)){
           return -1;
         }
 
-        fs_remove(file_name);
-        fs_create(file_name);
-
+        flag_open = 1;
         arq[i].modo = FS_W;
         arq[i].first_block = dir[i].first_block;
         return i;
       }
     }
-    if(i == 128){
-      fs_create(file_name);
+    if(i == 128 && !flag_open){
+      if (!fs_create(file_name)) {
+      	return -1;
+      }
+      flag_open = 1;
     }
-    for(i =0 ; i < 128; i++){
+    for(i = 0 ; i < 128; i++){
+
       if(dir[i].used == 0){
         fs_create(file_name);
         arq[i].modo = FS_W;
@@ -333,10 +336,41 @@ int fs_open(char *file_name, int mode) {
   return -1;
 }
 
-int fs_close(int file)  {
-  printf("Função não implementada: fs_close\n");
-  return 0;
+int fs_close(int file) {
+
+    if(arq[file].modo == -1){
+        printf("O arquivo já está fechado\n");
+        return -1;
+    }
+/*
+    //Atualiza arquivos no disco
+    for (int i = 0; i < (CLUSTERSIZE / SECTORSIZE); i++) { 
+		bl_write(arq[file].first_block * CLUSTERSIZE / SECTORSIZE + i, buffer + i * SECTORSIZE);
+	}
+*/
+	// Escrita do arquivo
+	for (int i = 0; i < 256; i++) {
+		if (!bl_write(i, (char *) fat + i*SECTORSIZE)) {
+			return -1;
+		}
+	} 
+  
+  	// Escrita do diretório
+	for (int i = 0; i < 8; i++){
+		if (!bl_write(i + 8, (char *) dir + i*SECTORSIZE))
+			return -1;
+	}
+
+    arq[file].modo = -1; //Usado para informar que está fechado  arquivo
+    arq[file].first_block = 0;
+
+    for (int i = 0; i < CLUSTERSIZE; i++) {
+      arq[file].buffer[i] = '\0'; // Zera o buffer
+    }
+
+    return 1;
 }
+
 
 int fs_write(char *buffer, int size, int file) {
  int contadorCluser = 0;
