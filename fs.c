@@ -32,27 +32,30 @@
 unsigned short fat[FATSIZE];
 
 typedef struct {
+
     char used;
     char name[25];
-    unsigned short first_block;
+    int bloco_inicial;
     int size;
+
 } dir_entry;
 
 
 typedef struct{
 
   char modo;
-  unsigned short first_block;
-  int carry;
-  int blockNumber;
+  int bloco_inicial;
+  int deslocamento;
 
-}arquivo;
+} arquivo;
 
 dir_entry dir[128];
 
 arquivo arq[128];
 
 int formatado = 1;
+
+char buffer_rw[CLUSTERSIZE];
 
 int fs_init() {
 
@@ -62,7 +65,7 @@ int fs_init() {
   /*inicializar a struct diretorio*/
   for(i=0; i < 128;i++){
     dir[i].used = 0;
-    dir[i].first_block = 0;
+    dir[i].bloco_inicial = 0;
     dir[i].name[0] = '\0';
     dir[i].size = 0;
   }
@@ -195,18 +198,18 @@ int fs_create(char* file_name) {
   strcpy(dir[livre].name, file_name);
   dir[livre].used = 1; 
   dir[livre].size = 0;
-  dir[livre].first_block = 0;
+  dir[livre].bloco_inicial = 0;
 
-  for (j = 256; j < FATSIZE && !dir[i].first_block; j++) {
+  for (j = 256; j < FATSIZE && !dir[i].bloco_inicial; j++) {
     if (fat[j] == 1) {
-      dir[i].first_block = j;
+      dir[i].bloco_inicial = j;
       fat[j] = 2;
     }
   }  
 
   for (fBlock = 0, i = 256; i < FATSIZE; i++) {
     if (fat[i] == 1 && !fBlock) {
-      dir[livre].first_block = i;
+      dir[livre].bloco_inicial = i;
       fat[i] = 2;
       fBlock = 1;
     }
@@ -252,7 +255,7 @@ int fs_remove(char *file_name) {
   strcpy(dir[remove].name, "");
   dir[remove].size = 0;
   dir[remove].used = 0;
-  j = dir[remove].first_block;
+  j = dir[remove].bloco_inicial;
 
   while(fat[j] != 2){ // remove tipo lista encadeada
     remove = j;
@@ -288,7 +291,7 @@ int fs_open(char *file_name, int mode) {
       if(strcmp(dir[i].name,file_name) == 0 && dir[i].used){
         
         arq[i].modo = FS_R;
-        arq[i].first_block = dir[i].first_block;
+        arq[i].bloco_inicial = dir[i].bloco_inicial;
 
         return i;   
       }
@@ -312,7 +315,7 @@ int fs_open(char *file_name, int mode) {
 
         flag_open = 1;
         arq[i].modo = FS_W;
-        arq[i].first_block = dir[i].first_block;
+        arq[i].bloco_inicial = dir[i].bloco_inicial;
         return i;
       }
     }
@@ -327,7 +330,7 @@ int fs_open(char *file_name, int mode) {
       if(dir[i].used == 0){
         fs_create(file_name);
         arq[i].modo = FS_W;
-        arq[i].first_block = dir[i].first_block;
+        arq[i].bloco_inicial = dir[i].bloco_inicial;
         return i;
       }
     } 
@@ -342,75 +345,76 @@ int fs_close(int file) {
         printf("O arquivo já está fechado\n");
         return -1;
     }
-/*
+
     //Atualiza arquivos no disco
     for (int i = 0; i < (CLUSTERSIZE / SECTORSIZE); i++) { 
-		bl_write(arq[file].first_block * CLUSTERSIZE / SECTORSIZE + i, buffer + i * SECTORSIZE);
+		bl_write(arq[file].bloco_inicial * CLUSTERSIZE / SECTORSIZE + i, buffer_rw + i * SECTORSIZE);
 	}
-*/
+
 	// Escrita do arquivo
 	for (int i = 0; i < 256; i++) {
-		if (!bl_write(i, (char *) fat + i*SECTORSIZE)) {
+		if (!bl_write(i, (char *) fat + i * SECTORSIZE)) {
 			return -1;
 		}
 	} 
   
   	// Escrita do diretório
 	for (int i = 0; i < 8; i++){
-		if (!bl_write(i + 8, (char *) dir + i*SECTORSIZE))
+		if (!bl_write(i + 8, (char *) dir + i * SECTORSIZE))
 			return -1;
 	}
 
     arq[file].modo = -1; //Usado para informar que está fechado  arquivo
-    arq[file].first_block = 0;
-
-    for (int i = 0; i < CLUSTERSIZE; i++) {
-      arq[file].buffer[i] = '\0'; // Zera o buffer
-    }
+    arq[file].bloco_inicial = 0;
 
     return 1;
 }
 
-
 int fs_write(char *buffer, int size, int file) {
- int contadorCluser = 0;
 
- //*Verificando se o arquivo existe*//
- if(arq[file]).first_block == 0){
-   printf("Arquivo inexistente");
-   return -1;
- }
+  int pos_escrita = 0, deslocamento = 0, desloc_setor = 0, i;
 
- //*Verificação se arquivo é de escrita*//
- if(arq[file].modo != FS_W){
-   printf("O arquivo não é um arquivo de escrita");
-   return -1;
- }
+  if (arq[file].bloco_inicial == 0) {
+    printf("Erro: o arquivo encontra-se fechado.\n");
+	return -1;
+  }
 
-contadorCluster = arq[file].contadorEscrita;
-diretorio = arq[file].first_block;
+  if (arq[file].modo != FS_W) {
+  	printf("Erro: o arquivo não encontra-se em modo escrita.\n");
+	return -1;
+  }
 
+  if (fs_free() < size) { // Verifica se o espaço livre em disco é suficiente
+	printf("Não há espaço suficiente no disco.\n");
+	return 0;
+  }
+
+  for (; (arq[file].deslocamento + size) > CLUSTERSIZE; size -= pos_escrita) {
+
+  	desloc_setor = arq[file].deslocamento % SECTORSIZE; //Deslocamento por setor
+  	pos_escrita += SECTORSIZE - desloc_setor;
+
+  	strncpy(buffer_rw, buffer, pos_escrita); //Copia para o buffer o deslocamento atual
+
+  	deslocamento += pos_escrita;
+  }
+
+  //Da flush do cluster no disco
+  for (i = 0; i < CLUSTERSIZE / SECTORSIZE; i++) {
+	if (!bl_write(arq[file].bloco_inicial * CLUSTERSIZE / SECTORSIZE + i, buffer + i * SECTORSIZE)) {
+		printf("Não foi possível efetuar a escrita");
+          return -1;
+    }
+  }
+
+  pos_escrita += size;
+  strncpy(buffer_rw, buffer, pos_escrita);   
+
+  return pos_escrita;
 }
 
 int fs_read(char *buffer, int size, int file) {
-  int posicao;
-
-//*Verifica Existência do arquivo*//
-if(arq[file].first_block = 0){
-  printf("Arquivo Inexistente");
-  return -1;
-
-//*Verifica Se é arquivo de leitura*//
-if(arq[file].modo != FS_R){
-  printf("O arquivo não é um arquivo de leitura");
-}
-
-posicao = arq[file.first_block];
-
-}
-
-
-  printf("Função não implementada: fs_read\n");
-  return -1;
+ 	printf("Função não implementada: fs_read\n");
+  	return -1;
 }
 
