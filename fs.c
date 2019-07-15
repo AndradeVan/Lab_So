@@ -370,7 +370,7 @@ int fs_close(int file) {
     return 1;
 }
 
-int fs_write(char *buffer, int size, int file) {
+int fs_write(char *buffer, int size, int file) { // FALTA TERMINAR!!!!!
 
   int pos_escrita = 0, deslocamento = 0, desloc_setor = 0, i;
 
