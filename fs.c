@@ -61,7 +61,7 @@ int fs_init() {
 
   int i =0,j=0;
   char *buffer;
-  
+
   /*inicializar a struct diretorio*/
   for(i=0; i < 128;i++){
     dir[i].used = 0;
@@ -76,26 +76,26 @@ int fs_init() {
     if(!bl_read(i,&buffer[i*SECTORSIZE]))
      return 0;
   }
-  
+
   /*ler o diretorio do disco*/
   buffer = (char *) dir;
   for(i=256;i < 264;i++){
     if(!bl_read(i,&buffer[j*SECTORSIZE]))
       return 0;
     j++;
-  } 
+  }
   //verificar se o disco está formatado
   for(i=0;i < 32;i++){
     if(fat[i] != 3){
       formatado = 0;
       break;
     }
-  } 
+  }
   return 1;
 }
 
 int fs_format() {
-  
+
   int i=0,j =0;
   char *buffer;
 
@@ -104,7 +104,7 @@ int fs_format() {
   }
 
   fat[32] = 4;
-  
+
   for(i = 0; i < 128;i++){
     dir[i].used = 0;
   }
@@ -118,7 +118,7 @@ int fs_format() {
     if(!bl_write(i,&buffer[i*SECTORSIZE]))
      return 0;
   }
-  
+
   buffer = (char *) dir;
   for(i=256;i < 264;i++){
     if(!bl_write(i,&buffer[j*SECTORSIZE]))
@@ -127,7 +127,7 @@ int fs_format() {
   }
 
   formatado = 1;
-  
+
   return 1;
 }
 
@@ -144,7 +144,7 @@ int fs_free() {
 }
 
 int fs_list(char *buffer, int size) {
- 
+
   char aux[100];
   int flag = 0;
 
@@ -159,20 +159,20 @@ int fs_list(char *buffer, int size) {
       strcat(buffer,"\n");
 
       flag = 1;
-    } 
+    }
   }
   return flag;
 }
 
 int fs_create(char* file_name) {
-  
+
   int i = 0, j = 0,livre = -1, fBlock;
   char *buffer;
 
   if (!formatado) {
     perror("Disco não formatado");
     return 0;
-  } 
+  }
 
   /*Verificar se o arquivo existe*/
   for(i=0; i < 128;i++){
@@ -196,7 +196,7 @@ int fs_create(char* file_name) {
   }
 
   strcpy(dir[livre].name, file_name);
-  dir[livre].used = 1; 
+  dir[livre].used = 1;
   dir[livre].size = 0;
   dir[livre].bloco_inicial = 0;
 
@@ -205,7 +205,7 @@ int fs_create(char* file_name) {
       dir[i].bloco_inicial = j;
       fat[j] = 2;
     }
-  }  
+  }
 
   for (fBlock = 0, i = 256; i < FATSIZE; i++) {
     if (fat[i] == 1 && !fBlock) {
@@ -231,7 +231,7 @@ int fs_create(char* file_name) {
     }
     j++;
   }
-  
+
   return 1;
 }
 
@@ -289,11 +289,11 @@ int fs_open(char *file_name, int mode) {
   if(mode == FS_R){
     for(i = 0; i < 128; i++){
       if(strcmp(dir[i].name,file_name) == 0 && dir[i].used){
-        
+
         arq[i].modo = FS_R;
         arq[i].bloco_inicial = dir[i].bloco_inicial;
 
-        return i;   
+        return i;
       }
     }
     if(i == 128) {
@@ -306,7 +306,7 @@ int fs_open(char *file_name, int mode) {
 
     for(i = 0; i < 128;i++){
       if(strcmp(dir[i].name,file_name) == 0){
-        if(!fs_remove(file_name)){ 
+        if(!fs_remove(file_name)){
           return -1;
         }
         if(!fs_create(file_name)){
@@ -333,9 +333,9 @@ int fs_open(char *file_name, int mode) {
         arq[i].bloco_inicial = dir[i].bloco_inicial;
         return i;
       }
-    } 
+    }
   }
-  
+
   return -1;
 }
 
@@ -347,7 +347,7 @@ int fs_close(int file) {
     }
 
     //Atualiza arquivos no disco
-    for (int i = 0; i < (CLUSTERSIZE / SECTORSIZE); i++) { 
+    for (int i = 0; i < (CLUSTERSIZE / SECTORSIZE); i++) {
 		bl_write(arq[file].bloco_inicial * CLUSTERSIZE / SECTORSIZE + i, buffer_rw + i * SECTORSIZE);
 	}
 
@@ -356,8 +356,8 @@ int fs_close(int file) {
 		if (!bl_write(i, (char *) fat + i * SECTORSIZE)) {
 			return -1;
 		}
-	} 
-  
+	}
+
   	// Escrita do diretório
 	for (int i = 0; i < 8; i++){
 		if (!bl_write(i + 8, (char *) dir + i * SECTORSIZE))
@@ -408,13 +408,80 @@ int fs_write(char *buffer, int size, int file) { // FALTA TERMINAR!!!!!
   }
 
   pos_escrita += size;
-  strncpy(buffer_rw, buffer, pos_escrita);   
+  strncpy(buffer_rw, buffer, pos_escrita);
 
   return pos_escrita;
 }
 
 int fs_read(char *buffer, int size, int file) {
- 	printf("Função não implementada: fs_read\n");
-  	return -1;
+   int byte_count = 0, desloc = 0, i;
+
+   if (arq[file].bloco_inicial == 0) {
+      printf("Erro: o arquivo encontra-se fechado.\n");
+      return -1;
+   }
+
+   if (arq[file].modo != FS_R) {
+      printf("Erro: o arquivo não encontra-se em modo leitura.\n");
+      return -1;
+   }
+
+   if (!arq[file].deslocamento) {
+      for (i = 0; i < CLUSTERSIZE / SECTORSIZE; i++)
+         bl_read(arq[file].bloco_inicial * CLUSTERSIZE / SECTORSIZE + i, buffer_rw + i * SECTORSIZE);
+   }
+
+   while (arq[file].deslocamento + size > CLUSTERSIZE) {
+      if (arq[file].deslocamento < CLUSTERSIZE) {
+         if(fat[arq[file].bloco_inicial] == 2)
+            byte_count += (dir[file].size % CLUSTERSIZE - arq[file].deslocamento);
+         else
+            byte_count += (SECTORSIZE - (arq[file].deslocamento % SECTORSIZE));
+         size -= byte_count;
+
+         for (i = 0; i < byte_count; i++)
+            *(buffer + desloc + i) = *(buffer_rw + arq[file].deslocamento + i);
+
+         desloc += byte_count;
+      }
+
+      arq[file].deslocamento = (arq[file].deslocamento + byte_count) % CLUSTERSIZE;
+
+      if (!arq[file].deslocamento){
+         arq[file].bloco_inicial = fat[arq[file].bloco_inicial];
+         for (i = 0; i < CLUSTERSIZE / SECTORSIZE; i++)
+            bl_read(arq[file].bloco_inicial * CLUSTERSIZE / SECTORSIZE + i, buffer_rw + i * SECTORSIZE);
+      }
+   }
+
+   if(arq[file].deslocamento == (dir[file].size % CLUSTERSIZE) && fat[arq[file].bloco_inicial] == 2)
+      return byte_count;
+
+   if (fat[arq[file].bloco_inicial] == 2) {
+      if(dir[file].size % CLUSTERSIZE > size + arq[file].deslocamento)
+         byte_count += size;
+      else
+         byte_count += (dir[file].size % CLUSTERSIZE - arq[file].deslocamento);
+
+      for (i = 0; i < byte_count - desloc; i++)
+         *(buffer + desloc + i) = *(buffer_rw + arq[file].deslocamento + i);
+
+      arq[file].deslocamento = (arq[file].deslocamento + byte_count - desloc) % CLUSTERSIZE;
+   }
+   else {
+      byte_count += size;
+      for (i = 0; i < size; i++)
+         *(buffer + desloc + i) = *(buffer_rw + arq[file].deslocamento + i);
+
+      arq[file].deslocamento = (arq[file].deslocamento + size) % CLUSTERSIZE;
+   }
+
+   if (!arq[file].deslocamento){
+      arq[file].bloco_inicial = fat[arq[file].bloco_inicial];
+      for (i = 0; i < CLUSTERSIZE / SECTORSIZE; i++)
+         bl_read(arq[file].bloco_inicial * CLUSTERSIZE / SECTORSIZE + i, buffer_rw + i * SECTORSIZE);
+   }
+
+   return byte_count;
 }
 
